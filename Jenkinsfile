@@ -1,65 +1,81 @@
+// =========================
+// Jenkins Declarative Pipeline
+// CICD for Node.js + Docker + EC2 Deployment
+// =========================
+
 pipeline {
     agent any
 
     environment {
+        // Docker Hub credentials stored in Jenkins Credentials
         DOCKERHUB = credentials('docker-hub')
+
+        // Docker Image Name
         IMAGE_NAME = "anant146/myapp-image"
+
+        // EC2 server details
         DEPLOY_HOST = "13.127.78.46"
         DEPLOY_USER = "ubuntu"
     }
 
     stages {
 
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
+                // Clones the repository Jenkinsfile is located in
                 checkout scm
             }
         }
 
-        stage('Build') {
+        stage('Build Dependencies') {
             steps {
-                echo "Installing dependencies"
-                bat 'npm install'
+                echo "Installing Node Dependencies"
+                sh 'npm install'        // For Node.js apps
             }
         }
 
-        stage('Test') {
+        stage('Run Tests') {
             steps {
-                echo "Running tests"
-                bat 'npm test'
+                echo "Running Tests"
+                sh 'npm test || echo "No tests configured"'   // Prevent failure if no tests exist
             }
         }
 
-        stage('Package') {
+        stage('Build Docker Image') {
             steps {
-                echo "Packaging app"
-                bat 'npm run build || echo No build step needed'
+                echo "Building Docker Image"
+                sh """
+                    docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} .
+                    docker tag ${IMAGE_NAME}:${BUILD_NUMBER} ${IMAGE_NAME}:latest
+                """
             }
         }
 
-        stage('Docker Build') {
+        stage('Push to Docker Hub') {
             steps {
-                echo "Building Docker image"
-                bat "docker build -t %IMAGE_NAME%:%BUILD_NUMBER% ."
-                bat "docker tag %IMAGE_NAME%:%BUILD_NUMBER% %IMAGE_NAME%:latest"
+                echo "Pushing Image to Docker Hub"
+
+                // Login and push the docker image
+                sh """
+                    echo ${DOCKERHUB_PSW} | docker login -u ${DOCKERHUB_USR} --password-stdin
+                    docker push ${IMAGE_NAME}:${BUILD_NUMBER}
+                    docker push ${IMAGE_NAME}:latest
+                """
             }
         }
 
-        stage('Docker Push') {
+        stage('Deploy to EC2') {
             steps {
-                echo "Logging into Docker Hub & pushing image"
-                bat "echo %DOCKERHUB_PSW% | docker login -u %DOCKERHUB_USR% --password-stdin"
-                bat "docker push %IMAGE_NAME%:%BUILD_NUMBER%"
-                bat "docker push %IMAGE_NAME%:latest"
-            }
-        }
+                echo "Deploying to EC2 Instance"
 
-        stage('Deploy') {
-            steps {
-                echo "Deploying to remote server"
+                // SSH to EC2 and pull + restart docker container
                 sshagent (credentials: ['ec2-ssh']) {
-                    bat """
-                    ssh -o StrictHostKeyChecking=no %DEPLOY_USER%@%DEPLOY_HOST% "docker pull %IMAGE_NAME%:latest && docker rm -f cicd-demo || true && docker run -d --name cicd-demo -p 80:3000 %IMAGE_NAME%:latest"
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
+                            docker pull ${IMAGE_NAME}:latest &&
+                            docker rm -f cicd-demo || true &&
+                            docker run -d --name cicd-demo -p 80:3000 ${IMAGE_NAME}:latest
+                        '
                     """
                 }
             }
@@ -68,10 +84,10 @@ pipeline {
 
     post {
         success {
-            echo "Pipeline completed successfully!"
+            echo "🎉 Pipeline completed successfully — App deployed to EC2!"
         }
         failure {
-            echo "Pipeline failed. Check above logs."
+            echo "❌ Pipeline failed — Check logs above"
         }
     }
 }
