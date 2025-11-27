@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DOCKERHUB = credentials('docker-hub')
-        IMAGE_NAME = "anantpatil146/myapp-image"
+        IMAGE_NAME = "anant146/myapp-image"
         DEPLOY_HOST = "3.110.56.167"
         DEPLOY_USER = "ubuntu"
     }
