@@ -3,8 +3,8 @@ pipeline {
 
     environment {
         DOCKERHUB = credentials('docker-hub')
-        IMAGE_NAME = "<your-dockerhub-username>/jenkins-cicd-demo"
-        DEPLOY_HOST = "3.110.56.167"         // e.g. 3.110.x.x
+        IMAGE_NAME = "anantpatil146/myapp-image"
+        DEPLOY_HOST = "3.110.56.167"
         DEPLOY_USER = "ubuntu"
     }
 
@@ -19,45 +19,38 @@ pipeline {
         stage('Build') {
             steps {
                 echo "Installing dependencies"
-                sh 'npm install'
-                // For Java: sh 'mvn clean install'
+                bat 'npm install'
             }
         }
 
         stage('Test') {
             steps {
                 echo "Running tests"
-                sh 'npm test'
-                // For Java: sh 'mvn test'
+                bat 'npm test'
             }
         }
 
         stage('Package') {
             steps {
                 echo "Packaging app"
-                sh 'npm run build || echo "No build step needed"'
-                // For Java: sh 'mvn package'
+                bat 'npm run build || echo No build step needed'
             }
         }
 
         stage('Docker Build') {
             steps {
                 echo "Building Docker image"
-                sh """
-                   docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} .
-                   docker tag ${IMAGE_NAME}:${BUILD_NUMBER} ${IMAGE_NAME}:latest
-                   """
+                bat "docker build -t %IMAGE_NAME%:%BUILD_NUMBER% ."
+                bat "docker tag %IMAGE_NAME%:%BUILD_NUMBER% %IMAGE_NAME%:latest"
             }
         }
 
         stage('Docker Push') {
             steps {
                 echo "Logging into Docker Hub & pushing image"
-                sh """
-                   echo ${DOCKERHUB_PSW} | docker login -u ${DOCKERHUB_USR} --password-stdin
-                   docker push ${IMAGE_NAME}:${BUILD_NUMBER}
-                   docker push ${IMAGE_NAME}:latest
-                   """
+                bat "echo %DOCKERHUB_PSW% | docker login -u %DOCKERHUB_USR% --password-stdin"
+                bat "docker push %IMAGE_NAME%:%BUILD_NUMBER%"
+                bat "docker push %IMAGE_NAME%:latest"
             }
         }
 
@@ -65,13 +58,9 @@ pipeline {
             steps {
                 echo "Deploying to remote server"
                 sshagent (credentials: ['ec2-ssh']) {
-                    sh """
-                       ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
-                         docker pull ${IMAGE_NAME}:latest &&
-                         docker rm -f cicd-demo || true &&
-                         docker run -d --name cicd-demo -p 80:3000 ${IMAGE_NAME}:latest
-                       '
-                       """
+                    bat """
+                    ssh -o StrictHostKeyChecking=no %DEPLOY_USER%@%DEPLOY_HOST% "docker pull %IMAGE_NAME%:latest && docker rm -f cicd-demo || true && docker run -d --name cicd-demo -p 80:3000 %IMAGE_NAME%:latest"
+                    """
                 }
             }
         }
